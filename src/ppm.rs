@@ -11,7 +11,7 @@ pub struct PPMImage {
     pub rows: usize,
     pub cols: usize,
     pub data: Vec<u32>,
-    pub header: Vec<u8>,
+    header: Vec<u8>,
     pub filename: String,
 }
 
@@ -35,8 +35,8 @@ impl Default for PPMImage {
 }
 
 impl PPMImage {
-    pub fn new() -> Self {
-        PPMImage::default()
+    pub fn new() -> PPMImageBuilder {
+        PPMImageBuilder::new()
     }
 
     pub fn from_dims(rows: usize, cols: usize) -> Self {
@@ -269,6 +269,59 @@ impl PPMImage {
     }
 } /* PPMImage */
 
+#[derive(Default)]
+pub struct PPMImageBuilder {
+    rows: Option<usize>,
+    cols: Option<usize>,
+    filename: Option<String>,
+}
+
+impl PPMImageBuilder {
+    pub fn new() -> Self {
+        PPMImageBuilder {
+            rows: None,
+            cols: None,
+            filename: None,
+        }
+    }
+
+    pub fn rows(mut self, rows: usize) -> Self {
+        self.rows = Some(rows);
+        self
+    }
+
+    pub fn cols(mut self, cols: usize) -> Self {
+        self.cols = Some(cols);
+        self
+    }
+
+    pub fn filename(mut self, filename: String) -> Self {
+        self.filename = Some(filename);
+        self
+    }
+
+    pub fn build(self) -> Result<PPMImage, String> {
+        if let None = self.rows {
+            return Err("Rows member must be specified when building a PPMImage.".to_string());
+        } else if let None = self.cols {
+            return Err("Cols member must be specified when building a PPMImage.".to_string());
+        } else if let None = self.filename {
+            return Err("Filename member must be specified when building a PPMImage.".to_string());
+        } else {
+            Ok(PPMImage {
+                rows: self.rows.unwrap(),
+                cols: self.cols.unwrap(),
+                filename: self.filename.unwrap().clone(),
+                header: format!("P6\n{} {}\n255\n", self.cols.unwrap(), self.rows.unwrap())
+                    .as_bytes()
+                    .to_vec(),
+                data: vec![],
+            }
+            .fill(colors::MAGENTA))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,29 +333,48 @@ mod tests {
     #[test]
     fn test_from_dimensions() {
         let image_a = PPMImage::from_dims(640, 640);
-        let image_b = PPMImage::new();
+        let image_b = PPMImage::new()
+            .rows(640)
+            .cols(640)
+            .filename("output.ppm".to_string())
+            .build()
+            .unwrap();
         dbg!(&image_a);
         assert_eq!(image_a, image_b);
     }
 
     #[test]
     fn test_write() {
-        let mut image = PPMImage::new();
-        image.filename = String::from("test_write.ppm");
+        let image = PPMImage::new()
+            .rows(640)
+            .cols(640)
+            .filename("test_write.ppm".to_string())
+            .build()
+            .unwrap();
         let _ = image.write();
     }
 
     #[test]
     fn test_checkboard() {
-        let mut image = PPMImage::from_dims(512, 256).checkerboard(32, BLACK);
-        image.filename = String::from("test_checkboard.ppm");
+        let image = PPMImage::new()
+            .rows(640)
+            .cols(640)
+            .filename("test_checkboard.ppm".to_string())
+            .build()
+            .unwrap()
+            .checkerboard(32, BLACK);
         let _ = image.write();
     }
 
     #[test]
     fn test_fill() {
-        let mut image = PPMImage::new().fill(YELLOW);
-        image.filename = String::from("test_fill.ppm");
+        let image = PPMImage::new()
+            .rows(640)
+            .cols(640)
+            .filename("test_fill.ppm".to_string())
+            .build()
+            .unwrap()
+            .fill(YELLOW);
         let _ = image.write();
     }
 
@@ -310,7 +382,12 @@ mod tests {
     fn test_line_dda() {
         let rows = 512;
         let cols = 512;
-        let mut image = PPMImage::from_dims(rows, cols)
+        let image = PPMImage::new()
+            .rows(rows)
+            .cols(cols)
+            .filename("test_line_dda.ppm".to_string())
+            .build()
+            .unwrap()
             .fill(MAGENTA)
             .draw_line_dda(
                 BLACK,
@@ -335,14 +412,17 @@ mod tests {
                     },
                 ),
             );
-        image.filename = String::from("test_line_dda.ppm");
         let _ = image.write();
-        dbg!(image);
     }
 
     #[test]
     fn test_line_naive() {
-        let mut image = PPMImage::from_dims(32, 32)
+        let image = PPMImage::new()
+            .rows(32)
+            .cols(32)
+            .filename("test_line_naive.ppm".to_string())
+            .build()
+            .unwrap()
             .fill(MAGENTA)
             .draw_line_naive(
                 BLACK,
@@ -358,14 +438,18 @@ mod tests {
                     coordinate::Coordinate { x: 32, y: 0 },
                 ),
             );
-        image.filename = String::from("test_line_naive.ppm");
         let _ = image.write();
-        dbg!(image);
     }
 
     #[test]
     fn test_get_pixel() {
-        let image = PPMImage::new().fill(YELLOW);
+        let image = PPMImage::new()
+            .rows(64)
+            .cols(64)
+            .filename("output.ppm".to_string())
+            .build()
+            .unwrap()
+            .fill(YELLOW);
         let pixel = image.get_pixel(coordinate::Coordinate { x: 0, y: 0 });
         assert_eq!(pixel, colors::YELLOW);
     }
