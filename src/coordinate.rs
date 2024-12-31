@@ -20,6 +20,16 @@ impl Display for Coordinate {
     }
 }
 
+impl Display for LineCoordinates {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "LineCoordinates(start-point({:}), end-point({:}))",
+            self.0, self.1
+        )
+    }
+}
+
 impl Coordinate {
     pub fn new(x: i32, y: i32) -> Self {
         Coordinate { x, y }

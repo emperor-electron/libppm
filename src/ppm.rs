@@ -202,36 +202,141 @@ impl PPMImage {
             return Err(e);
         }
 
-        let slope = coords.slope();
+        let slope = coords.slope().abs();
 
-        // TODO : Create 3 private functions:
-        //   bresenham_normal - normal calculation, slope is 0..=1
-        //   bresenham_lt0    - slope less than 0
-        //   bresenham_gt1    - slope greater than 1
-        if slope < 0.0 {
-            // TODO : If negative slope, get a line with positive slope by reflecting line about
-            // x-axis. Perform algorithm per usual & then reflect line back around the x-axis.
-            todo!("Calculation for line drawing for lines with negative slope not implemented")
+        if slope == 1.0 {
+            PPMImage::draw_diagonal_line(self, color, coords)
+        } else if slope == 0.0 {
+            PPMImage::draw_horizonal_line(self, color, coords)
+        } else if slope == f32::INFINITY {
+            PPMImage::draw_vertical_line(self, color, coords)
         } else if slope > 1.0 {
-            // TODO : If slope greater than 1, swap the x,y coordinates to be y,x which will give a
-            // line with slope less than 1. Perform the algorithm per usual & then swap the output
-            // pixel locations back from y,x -> x,y to get the line.
-            todo!(
-                "Calculation for line drawing for lines with slope greater than 1 not implemented"
-            )
+            PPMImage::bresenham_slope_greater_than_1(self, color, coords)
+        } else if slope > 0.0 && slope < 1.0 {
+            PPMImage::bresenham_general(self, color, coords)
+        } else {
+            panic!("Caught case in that doesn't fit Bresenham Line Algorithm Implementation. Input was {coords} and slope was {slope}");
+        }
+    }
+
+    /// Private function to calculate the pixels to be rendered in a cartesian plane where both
+    /// coordinates are within the space enclosed by the image (origin is at the top left of the
+    /// image) and the slope of the line represented by the LineCoordinates provided is:
+    /// slope == 0
+    fn draw_horizonal_line(
+        &mut self,
+        color: u32,
+        coords: coordinate::LineCoordinates,
+    ) -> Result<&mut Self, validate::ValidationError> {
+        // Assume that this function was called from draw_line_bresenham & coordinates have alredy
+        // been validated.
+        let coordinate::LineCoordinates(a, b) = coords.ensure_x_lr();
+
+        // Only x increments
+        for x_coord in a.x..=b.x {
+            self.set_pixel(coordinate::Coordinate::new(x_coord, a.y), color)?;
         }
 
-        let coordinate::LineCoordinates(a, b) = coords;
+        Ok(self)
+    }
+
+    /// Private function to calculate the pixels to be rendered in a cartesian plane where both
+    /// coordinates are within the space enclosed by the image (origin is at the top left of the
+    /// image) and the slope of the line represented by the LineCoordinates provided is:
+    /// slope == INFINITY
+    fn draw_vertical_line(
+        &mut self,
+        color: u32,
+        coords: coordinate::LineCoordinates,
+    ) -> Result<&mut Self, validate::ValidationError> {
+        // Assume that this function was called from draw_line_bresenham & coordinates have alredy
+        // been validated.
+        let coordinate::LineCoordinates(a, b) = coords.ensure_y_lr();
+
+        // Only y increments
+        for y_coord in a.y..=b.y {
+            self.set_pixel(coordinate::Coordinate::new(a.x, y_coord), color)?;
+        }
+
+        Ok(self)
+    }
+
+    /// Private function to calculate the pixels to be rendered in a cartesian plane where both
+    /// coordinates are within the space enclosed by the image (origin is at the top left of the
+    /// image) and the slope of the line represented by the LineCoordinates provided is:
+    /// slope == 1
+    fn draw_diagonal_line(
+        &mut self,
+        color: u32,
+        coords: coordinate::LineCoordinates,
+    ) -> Result<&mut Self, validate::ValidationError> {
+        // Assume that this function was called from draw_line_bresenham & coordinates have alredy
+        // been validated.
+        let coordinate::LineCoordinates(a, b) = coords.ensure_x_lr();
+
+        // Should be lesser x of the two
+        let mut point = coordinate::Coordinate::new(a.x, a.y);
+
+        // x & y increment together
+        for _ in a.y..=b.y {
+            self.set_pixel(point, color)?;
+            point.x += 1;
+            point.y += 1;
+        }
+
+        Ok(self)
+    }
+
+    /// Private function to calculate the pixels to be rendered in a cartesian plane where both
+    /// coordinates are within the space enclosed by the image (origin is at the top left of the
+    /// image) and the slope of the line represented by the LineCoordinates provided is:
+    /// 1 < slope
+    fn bresenham_slope_greater_than_1(
+        &mut self,
+        color: u32,
+        coords: coordinate::LineCoordinates,
+    ) -> Result<&mut Self, validate::ValidationError> {
+        // Assume that this function was called from draw_line_bresenham & coordinates have alredy
+        // been validated.
+        let coordinate::LineCoordinates(a, b) = coords.ensure_y_lr();
+
+        let (dx, dy) = a.delta_wrt(&b);
+        let mut d = 2 * dx - dy;
+        let mut x = a.x;
+
+        for y in a.y..=b.y {
+            let coord = coordinate::Coordinate::new(x, y);
+            self.set_pixel(coord, color)?;
+            if d > 0 {
+                d = d + (2 * dx - 2 * dy);
+                x += 1;
+            } else {
+                d = d + 2 * dx;
+            }
+        }
+
+        Ok(self)
+    }
+
+    /// Private function to calculate the pixels to be rendered in a cartesian plane where both
+    /// coordinates are within the space enclosed by the image (origin is at the top left of the
+    /// image) and the slope of the line represented by the LineCoordinates provided is:
+    /// 0 < slope < 1
+    fn bresenham_general(
+        &mut self,
+        color: u32,
+        coords: coordinate::LineCoordinates,
+    ) -> Result<&mut Self, validate::ValidationError> {
+        // Assume that this function was called from draw_line_bresenham & coordinates have alredy
+        // been validated.
+        let coordinate::LineCoordinates(a, b) = coords.ensure_x_lr();
 
         let (dx, dy) = a.delta_wrt(&b);
         let mut d = 2 * dy - dx;
         let mut y = a.y;
 
-        println!("dy={dy}, dx={dx}");
-
         for x in a.x..=b.x {
             self.set_pixel(coordinate::Coordinate::new(x, y), color)?;
-            println!("d={d}, x={x}, y={y}");
             if d > 0 {
                 d = d + (2 * dy - 2 * dx);
                 y += 1;
@@ -328,13 +433,17 @@ impl PPMImageBuilder {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
-
     use crate::colors::BLACK;
+    use crate::colors::CYAN;
+    use crate::colors::GRAY;
+    use crate::colors::LIME;
     use crate::colors::MAGENTA;
+    use crate::colors::OLIVE;
     use crate::colors::SILVER;
+    use crate::colors::WHITE;
     use crate::colors::YELLOW;
-
     use crate::validate::ValidationError;
 
     // TODO : Write tests for the write() method errors
@@ -503,22 +612,93 @@ mod tests {
 
     #[test]
     fn test_draw_line_bresenham() {
-        let rows = 480;
-        let cols = 640;
+        let rows = 32;
+        let cols = 32;
         let mut image = PPMImage::new()
             .rows(rows)
             .cols(cols)
             .filename("test_line_bresenham.ppm")
             .build()
             .unwrap()
-            .fill(SILVER);
+            .fill(MAGENTA);
 
-        let _ = match image.draw_line_bresenham(
-            YELLOW,
-            coordinate::LineCoordinates::new(0, 0, (rows - 1) as i32, (cols - 1) as i32),
-        ) {
-            Err(e) => panic!("{e}"),
-            Ok(image) => image.write(),
-        };
+        // Line with slope == 1
+        image
+            .draw_line_bresenham(
+                BLACK,
+                coordinate::LineCoordinates::new(0, 0, (rows - 1) as i32, (cols - 1) as i32),
+            )
+            .unwrap()
+            // Line with slope == 1, but x1 < x0
+            .draw_line_bresenham(
+                OLIVE,
+                coordinate::LineCoordinates::new(
+                    (rows - 2) as i32,
+                    (cols - 2) as i32,
+                    (rows / 2) as i32,
+                    (cols / 2) as i32,
+                ),
+            )
+            .unwrap()
+            // Line with slope = infinity (vertical line)
+            .draw_line_bresenham(
+                LIME,
+                coordinate::LineCoordinates::new(1, 1, 1, (cols - 2) as i32),
+            )
+            .unwrap()
+            // Line with slope = infinity (vertical line), but y1 < y0
+            .draw_line_bresenham(
+                OLIVE,
+                coordinate::LineCoordinates::new(1, (cols / 2) as i32, 1, (cols - 2) as i32),
+            )
+            .unwrap()
+            // Line with slope = 0 (horizontal line)
+            .draw_line_bresenham(
+                GRAY,
+                coordinate::LineCoordinates::new(1, 1, (rows - 2) as i32, 1),
+            )
+            .unwrap()
+            // Line with slope = 0 (horizontal line), but x1 < x0
+            .draw_line_bresenham(
+                OLIVE,
+                coordinate::LineCoordinates::new((rows / 2) as i32, 1, (rows - 2) as i32, 1),
+            )
+            .unwrap()
+            // Line with slope : 0 < slope < 1
+            .draw_line_bresenham(
+                SILVER,
+                coordinate::LineCoordinates::new(1, 1, (rows - 2) as i32, (cols / 2) as i32),
+            )
+            .unwrap()
+            // Line with slope : 0 < slope < 1, but x1 < x0
+            .draw_line_bresenham(
+                OLIVE,
+                coordinate::LineCoordinates::new(
+                    (rows - 2) as i32,
+                    (cols / 2) as i32,
+                    (rows / 2) as i32,
+                    (cols / 4) as i32,
+                ),
+            )
+            .unwrap()
+            // Line with slope : 1 < slope
+            .draw_line_bresenham(
+                CYAN,
+                coordinate::LineCoordinates::new(1, 1, (rows / 2) as i32, (cols - 2) as i32),
+            )
+            .unwrap()
+            // Line with slope : 1 < slope, but x1 < x0
+            .draw_line_bresenham(
+                WHITE,
+                coordinate::LineCoordinates::new(
+                    (rows / 2) as i32,
+                    (cols - 2) as i32,
+                    (rows / 4) as i32,
+                    (cols / 4) as i32,
+                ),
+            )
+            .unwrap()
+            .write()
+            .unwrap();
     }
 }
