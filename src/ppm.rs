@@ -2,6 +2,7 @@ use crate::colors;
 use crate::coordinate;
 use crate::validate;
 use std::error::Error;
+use std::fmt::Display;
 use std::fs;
 use std::io::Write;
 use std::process;
@@ -31,6 +32,19 @@ impl Default for PPMImage {
             header: Vec::from(header_data),
             filename: String::from("output.ppm"),
         }
+    }
+}
+
+impl Display for PPMImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "PPMImage(rows={}, cols={}, data.len()={}, filename={})",
+            self.rows,
+            self.cols,
+            self.data.len(),
+            self.filename
+        )
     }
 }
 
@@ -149,7 +163,7 @@ impl PPMImage {
         &mut self,
         color: u32,
         coords: coordinate::LineCoordinates,
-    ) -> Result<Self, validate::ValidationError> {
+    ) -> Result<&mut Self, validate::ValidationError> {
         if let Err(e) = validate::line_coordinates(&self, &coords) {
             return Err(e);
         }
@@ -175,13 +189,7 @@ impl PPMImage {
             y += y_increment;
         }
 
-        Ok(PPMImage {
-            rows: self.rows,
-            cols: self.cols,
-            data: self.data.clone(),
-            header: self.header.clone(),
-            filename: self.filename.clone(),
-        })
+        Ok(self)
     }
 
     /// Renders a line using Bresenham's Line Algorithm.
@@ -189,9 +197,28 @@ impl PPMImage {
         &mut self,
         color: u32,
         coords: coordinate::LineCoordinates,
-    ) -> Result<Self, validate::ValidationError> {
+    ) -> Result<&mut Self, validate::ValidationError> {
         if let Err(e) = validate::line_coordinates(&self, &coords) {
             return Err(e);
+        }
+
+        let slope = coords.slope();
+
+        // TODO : Create 3 private functions:
+        //   bresenham_normal - normal calculation, slope is 0..=1
+        //   bresenham_lt0    - slope less than 0
+        //   bresenham_gt1    - slope greater than 1
+        if slope < 0.0 {
+            // TODO : If negative slope, get a line with positive slope by reflecting line about
+            // x-axis. Perform algorithm per usual & then reflect line back around the x-axis.
+            todo!("Calculation for line drawing for lines with negative slope not implemented")
+        } else if slope > 1.0 {
+            // TODO : If slope greater than 1, swap the x,y coordinates to be y,x which will give a
+            // line with slope less than 1. Perform the algorithm per usual & then swap the output
+            // pixel locations back from y,x -> x,y to get the line.
+            todo!(
+                "Calculation for line drawing for lines with slope greater than 1 not implemented"
+            )
         }
 
         let coordinate::LineCoordinates(a, b) = coords;
@@ -200,23 +227,20 @@ impl PPMImage {
         let mut d = 2 * dy - dx;
         let mut y = a.y;
 
-        for x in a.x..b.x {
+        println!("dy={dy}, dx={dx}");
+
+        for x in a.x..=b.x {
             self.set_pixel(coordinate::Coordinate::new(x, y), color)?;
-            if d >= 0 {
+            println!("d={d}, x={x}, y={y}");
+            if d > 0 {
+                d = d + (2 * dy - 2 * dx);
                 y += 1;
-                d = d + 2 * dy - 2 * dx;
             } else {
                 d = d + 2 * dy;
             }
         }
 
-        Ok(PPMImage {
-            rows: self.rows,
-            cols: self.cols,
-            data: self.data.clone(),
-            header: self.header.clone(),
-            filename: self.filename.clone(),
-        })
+        Ok(self)
     }
 
     pub fn set_pixel(
@@ -308,6 +332,7 @@ mod tests {
 
     use crate::colors::BLACK;
     use crate::colors::MAGENTA;
+    use crate::colors::SILVER;
     use crate::colors::YELLOW;
 
     use crate::validate::ValidationError;
@@ -378,13 +403,15 @@ mod tests {
     fn test_line_dda() -> Result<(), ValidationError> {
         let rows = 512;
         let cols = 512;
-        let image = PPMImage::new()
+        let mut image = PPMImage::new()
             .rows(rows)
             .cols(cols)
             .filename("test_line_dda.ppm")
             .build()
             .unwrap()
-            .fill(MAGENTA)
+            .fill(MAGENTA);
+
+        let _ = match image
             .draw_line_dda(
                 BLACK,
                 coordinate::LineCoordinates(
@@ -417,8 +444,11 @@ mod tests {
                         y: cols as i32 / 2,
                     },
                 ),
-            )?;
-        let _ = image.write();
+            ) {
+            Err(e) => panic!("{e}"),
+            Ok(image) => image.write(),
+        };
+
         Ok(())
     }
 
@@ -426,25 +456,7 @@ mod tests {
     fn test_draw_line_with_oob_coordinate() {
         let rows = 32;
         let cols = 32;
-        let invalid_image = PPMImage::new()
-            .rows(rows)
-            .cols(cols)
-            .filename("test_line_naive.ppm")
-            .build()
-            .unwrap()
-            .fill(MAGENTA)
-            .draw_line_dda(
-                BLACK,
-                coordinate::LineCoordinates(
-                    coordinate::Coordinate { x: 0, y: 0 },
-                    coordinate::Coordinate {
-                        x: rows as i32,
-                        y: cols as i32,
-                    },
-                ),
-            );
-
-        let invalid_image_without_error = PPMImage::new()
+        let mut invalid_image = PPMImage::new()
             .rows(rows)
             .cols(cols)
             .filename("test_line_naive.ppm")
@@ -452,7 +464,12 @@ mod tests {
             .unwrap()
             .fill(MAGENTA);
 
-        match invalid_image {
+        let invalid_image_without_error = invalid_image.clone();
+
+        match invalid_image.draw_line_dda(
+            BLACK,
+            coordinate::LineCoordinates::new(0, 0, rows as i32, cols as i32),
+        ) {
             Err(ValidationError::OutOfBoundsError(coord, image)) => {
                 assert_eq!(
                     coord,
@@ -486,26 +503,22 @@ mod tests {
 
     #[test]
     fn test_draw_line_bresenham() {
-        let rows = 512;
-        let cols = 512;
-        let image = PPMImage::new()
+        let rows = 480;
+        let cols = 640;
+        let mut image = PPMImage::new()
             .rows(rows)
             .cols(cols)
             .filename("test_line_bresenham.ppm")
             .build()
             .unwrap()
-            .fill(MAGENTA)
-            .draw_line_bresenham(
-                BLACK,
-                coordinate::LineCoordinates(
-                    coordinate::Coordinate { x: 0, y: 0 },
-                    coordinate::Coordinate {
-                        x: rows as i32 - 1,
-                        y: cols as i32 - 1,
-                    },
-                ),
-            )
-            .unwrap();
-        let _ = image.write();
+            .fill(SILVER);
+
+        let _ = match image.draw_line_bresenham(
+            YELLOW,
+            coordinate::LineCoordinates::new(0, 0, (rows - 1) as i32, (cols - 1) as i32),
+        ) {
+            Err(e) => panic!("{e}"),
+            Ok(image) => image.write(),
+        };
     }
 }

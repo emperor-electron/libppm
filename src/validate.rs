@@ -17,7 +17,7 @@ impl Display for ValidationError {
             ValidationError::OutOfBoundsError(coord, image) => {
                 write!(
                     f,
-                    "{} is out of bounds for image with dimensions {} by {}.",
+                    "{} is out of bounds for image with dimensions {} rows by {} columns.",
                     coord, image.rows, image.cols
                 )
             }
@@ -65,8 +65,8 @@ pub fn line_coordinates(image: &PPMImage, coords: &LineCoordinates) -> Result<()
 }
 
 pub fn coordinate(image: &PPMImage, coord: &Coordinate) -> Result<(), ValidationError> {
-    if coord.x >= (image.cols as i32)
-        || coord.y >= (image.rows as i32)
+    if coord.x >= (image.rows as i32)
+        || coord.y >= (image.cols as i32)
         || coord.x < 0
         || coord.y < 0
     {

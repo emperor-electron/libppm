@@ -69,7 +69,7 @@ impl LineCoordinates {
     /// ```
     pub fn slope(&self) -> f32 {
         if self.1.x - self.0.x == 0 {
-            0 as f32
+            f32::INFINITY
         } else {
             (self.1.y - self.0.y) as f32 / (self.1.x - self.0.x) as f32
         }
