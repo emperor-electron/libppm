@@ -6,7 +6,7 @@ use std::fs;
 use std::io::Write;
 use std::process;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct PPMImage {
     pub rows: usize,
     pub cols: usize,
@@ -68,10 +68,9 @@ impl PPMImage {
     /// Writes image to file - will panic if there is not enough data. Calculations are based on the
     /// cols & rows PPMImage struct member values.
     pub fn write(&self) -> Result<(), Box<dyn Error>> {
-        assert!(
-            self.data.len() == self.cols * self.rows,
-            "Not enough data to write into file"
-        );
+        if let Err(e) = validate::pixel_data_length(self) {
+            return Err(Box::new(e));
+        }
 
         let mut fh = fs::File::create(&self.filename)?;
         let mut buffer: Vec<u8> = Vec::new();
@@ -89,10 +88,6 @@ impl PPMImage {
 
         let _ = fh.write(&buffer);
         Ok(())
-    }
-
-    pub fn read() {
-        todo!()
     }
 
     /// Populates PPM Image with checkboard pattern
@@ -149,89 +144,23 @@ impl PPMImage {
         }
     }
 
-    /// Renders a line using naive algorithm - only the equation for a line (y = mx + b) is
-    /// used.
-    pub fn draw_line_naive(&self, color: u32, coords: coordinate::LineCoordinates) -> Self {
-        if let Err(e) = validate::line_coordinates(&self, &coords) {
-            eprintln!("ERROR: {e}");
-            process::exit(1);
-        }
-
-        let line_data = Vec::from(self.data.clone());
-
-        let mut image = PPMImage {
-            cols: self.cols,
-            rows: self.rows,
-            data: line_data,
-            filename: self.filename.clone(),
-            header: self.header.clone(),
-        };
-
-        let coordinate::LineCoordinates(a, b) = coords;
-
-        // handle case where there is a vertical line
-        if a.x == b.x {
-            todo!()
-        }
-
-        // y = mx+b
-        // m = dy/dx
-        // b = y-mx
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let m = (dy as f32) / (dx as f32);
-        let y_intercept = (a.y as f32) - m * (a.x as f32);
-
-        let lesser_x;
-        let greater_x;
-        let mut y;
-
-        // In order to iterate in raster-scan fashion
-        if a.x > b.x {
-            greater_x = a.x;
-            lesser_x = b.x;
-        } else {
-            greater_x = b.x;
-            lesser_x = a.x;
-        }
-
-        for x_coordinate in lesser_x..greater_x {
-            y = m * x_coordinate as f32 + y_intercept;
-            let coord = coordinate::Coordinate {
-                x: x_coordinate,
-                y: y as i32,
-            };
-            println!(
-                "Coordinate given to set_pixel in line(): {} ; Y-intercept: {} ; m: {}",
-                coord, y_intercept, m
-            );
-            image.set_pixel(coord, color);
-        }
-
-        image
-    }
-
     /// Renders a line using the Digital Differential Analyzer algorithm.
-    pub fn draw_line_dda(&mut self, color: u32, coords: coordinate::LineCoordinates) -> Self {
+    pub fn draw_line_dda(
+        &mut self,
+        color: u32,
+        coords: coordinate::LineCoordinates,
+    ) -> Result<Self, validate::ValidationError> {
         if let Err(e) = validate::line_coordinates(&self, &coords) {
-            eprintln!("ERROR: {e}");
-            process::exit(1);
+            return Err(e);
         }
 
         let coordinate::LineCoordinates(a, b) = coords;
 
-        let dx = (b.x - a.x).abs();
-        let dy = (b.y - a.y).abs();
+        let (dx, dy) = a.delta_wrt(&b);
         let mut x: f32 = a.x as f32;
         let mut y: f32 = a.y as f32;
 
-        let steps;
-
-        if dx.abs() > dy.abs() {
-            steps = dx.abs();
-        } else {
-            steps = dy.abs();
-        }
+        let steps = dx.abs().max(dy.abs());
 
         let x_increment: f32 = (dx as f32) / (steps as f32);
         let y_increment: f32 = (dy as f32) / (steps as f32);
@@ -241,31 +170,82 @@ impl PPMImage {
                 x: x as i32,
                 y: y as i32,
             };
-            self.set_pixel(coord, color);
+            self.set_pixel(coord, color)?;
             x += x_increment;
             y += y_increment;
         }
 
-        PPMImage {
+        Ok(PPMImage {
             rows: self.rows,
             cols: self.cols,
             data: self.data.clone(),
             header: self.header.clone(),
             filename: self.filename.clone(),
-        }
+        })
     }
 
-    pub fn set_pixel(&mut self, coord: coordinate::Coordinate, color: u32) {
+    /// Renders a line using Bresenham's Line Algorithm.
+    pub fn draw_line_bresenham(
+        &mut self,
+        color: u32,
+        coords: coordinate::LineCoordinates,
+    ) -> Result<Self, validate::ValidationError> {
+        if let Err(e) = validate::line_coordinates(&self, &coords) {
+            return Err(e);
+        }
+
+        let coordinate::LineCoordinates(a, b) = coords;
+
+        let (dx, dy) = a.delta_wrt(&b);
+        let mut d = 2 * dy - dx;
+        let mut y = a.y;
+
+        for x in a.x..b.x {
+            self.set_pixel(coordinate::Coordinate::new(x, y), color)?;
+            if d >= 0 {
+                y += 1;
+                d = d + 2 * dy - 2 * dx;
+            } else {
+                d = d + 2 * dy;
+            }
+        }
+
+        Ok(PPMImage {
+            rows: self.rows,
+            cols: self.cols,
+            data: self.data.clone(),
+            header: self.header.clone(),
+            filename: self.filename.clone(),
+        })
+    }
+
+    pub fn set_pixel(
+        &mut self,
+        coord: coordinate::Coordinate,
+        color: u32,
+    ) -> Result<(), validate::ValidationError> {
         if let Err(e) = validate::coordinate(&self, &coord) {
-            eprintln!("ERROR: {e}");
-            process::exit(1);
+            return Err(e);
         }
 
-        self.data[(coord.x as usize) * self.rows + (coord.y as usize)] = color;
+        let pixel_index = (coord.x as usize) * self.rows + (coord.y as usize);
+
+        self.data[pixel_index] = color;
+
+        Ok(())
     }
 
-    pub fn get_pixel(&self, coord: coordinate::Coordinate) -> u32 {
-        self.data[(coord.x as usize) * self.rows + (coord.y as usize)]
+    pub fn get_pixel(
+        &self,
+        coord: coordinate::Coordinate,
+    ) -> Result<u32, validate::ValidationError> {
+        if let Err(e) = validate::coordinate(&self, &coord) {
+            return Err(e);
+        }
+
+        let pixel_index = (coord.x as usize) * self.rows + (coord.y as usize);
+
+        Ok(self.data[pixel_index])
     }
 } /* PPMImage */
 
@@ -295,8 +275,8 @@ impl PPMImageBuilder {
         self
     }
 
-    pub fn filename(mut self, filename: String) -> Self {
-        self.filename = Some(filename);
+    pub fn filename(mut self, filename: &str) -> Self {
+        self.filename = Some(filename.to_string());
         self
     }
 
@@ -330,17 +310,33 @@ mod tests {
     use crate::colors::MAGENTA;
     use crate::colors::YELLOW;
 
+    use crate::validate::ValidationError;
+
+    // TODO : Write tests for the write() method errors
+
     #[test]
     fn test_from_dimensions() {
         let image_a = PPMImage::from_dims(640, 640);
         let image_b = PPMImage::new()
             .rows(640)
             .cols(640)
-            .filename("output.ppm".to_string())
+            .filename("output.ppm")
             .build()
             .unwrap();
-        dbg!(&image_a);
         assert_eq!(image_a, image_b);
+    }
+
+    #[test]
+    fn test_big_image() {
+        let image = PPMImage::new()
+            .rows(1080)
+            .cols(1920)
+            .filename("test_big.ppm")
+            .build()
+            .unwrap()
+            .fill(MAGENTA)
+            .checkerboard(16, BLACK);
+        let _ = image.write();
     }
 
     #[test]
@@ -348,7 +344,7 @@ mod tests {
         let image = PPMImage::new()
             .rows(640)
             .cols(640)
-            .filename("test_write.ppm".to_string())
+            .filename("test_write.ppm")
             .build()
             .unwrap();
         let _ = image.write();
@@ -359,7 +355,7 @@ mod tests {
         let image = PPMImage::new()
             .rows(640)
             .cols(640)
-            .filename("test_checkboard.ppm".to_string())
+            .filename("test_checkboard.ppm")
             .build()
             .unwrap()
             .checkerboard(32, BLACK);
@@ -371,7 +367,7 @@ mod tests {
         let image = PPMImage::new()
             .rows(640)
             .cols(640)
-            .filename("test_fill.ppm".to_string())
+            .filename("test_fill.ppm")
             .build()
             .unwrap()
             .fill(YELLOW);
@@ -379,13 +375,13 @@ mod tests {
     }
 
     #[test]
-    fn test_line_dda() {
+    fn test_line_dda() -> Result<(), ValidationError> {
         let rows = 512;
         let cols = 512;
         let image = PPMImage::new()
             .rows(rows)
             .cols(cols)
-            .filename("test_line_dda.ppm".to_string())
+            .filename("test_line_dda.ppm")
             .build()
             .unwrap()
             .fill(MAGENTA)
@@ -394,11 +390,21 @@ mod tests {
                 coordinate::LineCoordinates(
                     coordinate::Coordinate { x: 0, y: 0 },
                     coordinate::Coordinate {
-                        x: rows as i32,
-                        y: cols as i32,
+                        x: rows as i32 - 1,
+                        y: cols as i32 - 1,
                     },
                 ),
-            )
+            )?
+            .draw_line_dda(
+                BLACK,
+                coordinate::LineCoordinates(
+                    coordinate::Coordinate {
+                        x: rows as i32 - 1,
+                        y: cols as i32 - 1,
+                    },
+                    coordinate::Coordinate { x: 37, y: 128 },
+                ),
+            )?
             .draw_line_dda(
                 BLACK,
                 coordinate::LineCoordinates(
@@ -411,34 +417,55 @@ mod tests {
                         y: cols as i32 / 2,
                     },
                 ),
-            );
+            )?;
         let _ = image.write();
+        Ok(())
     }
 
     #[test]
-    fn test_line_naive() {
-        let image = PPMImage::new()
-            .rows(32)
-            .cols(32)
-            .filename("test_line_naive.ppm".to_string())
+    fn test_draw_line_with_oob_coordinate() {
+        let rows = 32;
+        let cols = 32;
+        let invalid_image = PPMImage::new()
+            .rows(rows)
+            .cols(cols)
+            .filename("test_line_naive.ppm")
             .build()
             .unwrap()
             .fill(MAGENTA)
-            .draw_line_naive(
+            .draw_line_dda(
                 BLACK,
                 coordinate::LineCoordinates(
                     coordinate::Coordinate { x: 0, y: 0 },
-                    coordinate::Coordinate { x: 32, y: 32 },
-                ),
-            )
-            .draw_line_naive(
-                BLACK,
-                coordinate::LineCoordinates(
-                    coordinate::Coordinate { x: 0, y: 32 },
-                    coordinate::Coordinate { x: 32, y: 0 },
+                    coordinate::Coordinate {
+                        x: rows as i32,
+                        y: cols as i32,
+                    },
                 ),
             );
-        let _ = image.write();
+
+        let invalid_image_without_error = PPMImage::new()
+            .rows(rows)
+            .cols(cols)
+            .filename("test_line_naive.ppm")
+            .build()
+            .unwrap()
+            .fill(MAGENTA);
+
+        match invalid_image {
+            Err(ValidationError::OutOfBoundsError(coord, image)) => {
+                assert_eq!(
+                    coord,
+                    coordinate::Coordinate {
+                        x: rows as i32,
+                        y: cols as i32,
+                    },
+                );
+
+                assert_eq!(image, invalid_image_without_error);
+            }
+            _ => panic!("Expected to get an error."),
+        }
     }
 
     #[test]
@@ -446,11 +473,39 @@ mod tests {
         let image = PPMImage::new()
             .rows(64)
             .cols(64)
-            .filename("output.ppm".to_string())
+            .filename("output.ppm")
             .build()
             .unwrap()
             .fill(YELLOW);
-        let pixel = image.get_pixel(coordinate::Coordinate { x: 0, y: 0 });
-        assert_eq!(pixel, colors::YELLOW);
+
+        match image.get_pixel(coordinate::Coordinate { x: 0, y: 0 }) {
+            Ok(pixel_value) => assert_eq!(pixel_value, colors::YELLOW),
+            _ => panic!("Value should be ok."),
+        };
+    }
+
+    #[test]
+    fn test_draw_line_bresenham() {
+        let rows = 512;
+        let cols = 512;
+        let image = PPMImage::new()
+            .rows(rows)
+            .cols(cols)
+            .filename("test_line_bresenham.ppm")
+            .build()
+            .unwrap()
+            .fill(MAGENTA)
+            .draw_line_bresenham(
+                BLACK,
+                coordinate::LineCoordinates(
+                    coordinate::Coordinate { x: 0, y: 0 },
+                    coordinate::Coordinate {
+                        x: rows as i32 - 1,
+                        y: cols as i32 - 1,
+                    },
+                ),
+            )
+            .unwrap();
+        let _ = image.write();
     }
 }
