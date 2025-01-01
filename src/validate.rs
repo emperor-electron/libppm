@@ -1,6 +1,5 @@
 use crate::coordinate::Coordinate;
 use crate::coordinate::LineCoordinates;
-use crate::coordinate::TriangleCoordinates;
 use crate::ppm::PPMImage;
 use std::fmt::Display;
 
@@ -46,19 +45,11 @@ impl Display for ValidationError {
 impl std::error::Error for ValidationError {}
 
 /// Validates that given coordinates are within a given image
-pub fn triangle_coordinates<'a>(
-    image: &'a PPMImage,
-    coords: &'a TriangleCoordinates,
-) -> Result<(), ValidationError> {
-    let TriangleCoordinates(coord_a, coord_b, coord_c) = coords;
-    coordinate(image, coord_a)?;
-    coordinate(image, coord_b)?;
-    coordinate(image, coord_c)?;
-    Ok(())
-}
-
 pub fn line_coordinates(image: &PPMImage, coords: &LineCoordinates) -> Result<(), ValidationError> {
-    let LineCoordinates(coord_a, coord_b) = coords;
+    let LineCoordinates {
+        first: coord_a,
+        second: coord_b,
+    } = coords;
     coordinate(image, coord_a)?;
     coordinate(image, coord_b)?;
     Ok(())

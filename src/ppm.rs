@@ -5,7 +5,6 @@ use std::error::Error;
 use std::fmt::Display;
 use std::fs;
 use std::io::Write;
-use std::process;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct PPMImage {
@@ -105,6 +104,8 @@ impl PPMImage {
     }
 
     /// Populates PPM Image with checkboard pattern
+    ///
+    /// TODO : Don't return a new instance - modify existing instance
     pub fn checkerboard(&self, tile_size: usize, tile_color: u32) -> Self {
         assert!(self.rows != 0 && self.cols != 0);
 
@@ -132,26 +133,12 @@ impl PPMImage {
 
     /// Fill an image with a given input color - expects the rows and cols members to be set to
     /// valid values.
+    ///
+    /// TODO : Don't return a new instance - modify existing instance
     pub fn fill(&self, color: u32) -> Self {
         let fill_data = vec![color; self.rows * self.cols];
         PPMImage {
             data: fill_data,
-            filename: self.filename.clone(),
-            header: self.header.clone(),
-            ..*self
-        }
-    }
-
-    pub fn triangle(&self, _color: u32, coords: coordinate::TriangleCoordinates) -> Self {
-        if let Err(e) = validate::triangle_coordinates(&self, &coords) {
-            eprintln!("ERROR: {e}");
-            process::exit(1);
-        }
-
-        let triangle_data = Vec::new();
-
-        PPMImage {
-            data: triangle_data,
             filename: self.filename.clone(),
             header: self.header.clone(),
             ..*self
@@ -168,7 +155,10 @@ impl PPMImage {
             return Err(e);
         }
 
-        let coordinate::LineCoordinates(a, b) = coords;
+        let coordinate::LineCoordinates {
+            first: a,
+            second: b,
+        } = coords;
 
         let (dx, dy) = a.delta_wrt(&b);
         let mut x: f32 = a.x as f32;
@@ -230,7 +220,10 @@ impl PPMImage {
     ) -> Result<&mut Self, validate::ValidationError> {
         // Assume that this function was called from draw_line_bresenham & coordinates have alredy
         // been validated.
-        let coordinate::LineCoordinates(a, b) = coords.ensure_x_lr();
+        let coordinate::LineCoordinates {
+            first: a,
+            second: b,
+        } = coords.ensure_x_lr();
 
         // Only x increments
         for x_coord in a.x..=b.x {
@@ -251,7 +244,10 @@ impl PPMImage {
     ) -> Result<&mut Self, validate::ValidationError> {
         // Assume that this function was called from draw_line_bresenham & coordinates have alredy
         // been validated.
-        let coordinate::LineCoordinates(a, b) = coords.ensure_y_lr();
+        let coordinate::LineCoordinates {
+            first: a,
+            second: b,
+        } = coords.ensure_y_lr();
 
         // Only y increments
         for y_coord in a.y..=b.y {
@@ -272,7 +268,10 @@ impl PPMImage {
     ) -> Result<&mut Self, validate::ValidationError> {
         // Assume that this function was called from draw_line_bresenham & coordinates have alredy
         // been validated.
-        let coordinate::LineCoordinates(a, b) = coords.ensure_x_lr();
+        let coordinate::LineCoordinates {
+            first: a,
+            second: b,
+        } = coords.ensure_x_lr();
 
         // Should be lesser x of the two
         let mut point = coordinate::Coordinate::new(a.x, a.y);
@@ -298,7 +297,10 @@ impl PPMImage {
     ) -> Result<&mut Self, validate::ValidationError> {
         // Assume that this function was called from draw_line_bresenham & coordinates have alredy
         // been validated.
-        let coordinate::LineCoordinates(a, b) = coords.ensure_y_lr();
+        let coordinate::LineCoordinates {
+            first: a,
+            second: b,
+        } = coords.ensure_y_lr();
 
         let (dx, dy) = a.delta_wrt(&b);
         let mut d = 2 * dx - dy;
@@ -329,7 +331,10 @@ impl PPMImage {
     ) -> Result<&mut Self, validate::ValidationError> {
         // Assume that this function was called from draw_line_bresenham & coordinates have alredy
         // been validated.
-        let coordinate::LineCoordinates(a, b) = coords.ensure_x_lr();
+        let coordinate::LineCoordinates {
+            first: a,
+            second: b,
+        } = coords.ensure_x_lr();
 
         let (dx, dy) = a.delta_wrt(&b);
         let mut d = 2 * dy - dx;
@@ -375,6 +380,22 @@ impl PPMImage {
         let pixel_index = (coord.x as usize) * self.rows + (coord.y as usize);
 
         Ok(self.data[pixel_index])
+    }
+
+    /// Draw Circle with the Midpoint Circle Algorithm
+    pub fn draw_circle_mca(
+        &mut self,
+        color: u32,
+        coords: coordinate::CircleCoordinates,
+    ) -> Result<&mut Self, validate::ValidationError> {
+        // TODO: Validation of Circle Coordinates
+
+        let x = 0;
+        let y = coords.radius;
+
+        let mut p = (5 / 4) as f32 - coords.radius as f32;
+
+        todo!()
     }
 } /* PPMImage */
 
@@ -523,35 +544,19 @@ mod tests {
         let _ = match image
             .draw_line_dda(
                 BLACK,
-                coordinate::LineCoordinates(
-                    coordinate::Coordinate { x: 0, y: 0 },
-                    coordinate::Coordinate {
-                        x: rows as i32 - 1,
-                        y: cols as i32 - 1,
-                    },
-                ),
+                coordinate::LineCoordinates::new(0, 0, rows as i32 - 1, cols as i32 - 1),
             )?
             .draw_line_dda(
                 BLACK,
-                coordinate::LineCoordinates(
-                    coordinate::Coordinate {
-                        x: rows as i32 - 1,
-                        y: cols as i32 - 1,
-                    },
-                    coordinate::Coordinate { x: 37, y: 128 },
-                ),
+                coordinate::LineCoordinates::new(rows as i32 - 1, cols as i32 - 1, 37, 128),
             )?
             .draw_line_dda(
                 BLACK,
-                coordinate::LineCoordinates(
-                    coordinate::Coordinate {
-                        x: 0,
-                        y: cols as i32 / 2,
-                    },
-                    coordinate::Coordinate {
-                        x: rows as i32 / 2,
-                        y: cols as i32 / 2,
-                    },
+                coordinate::LineCoordinates::new(
+                    0,
+                    cols as i32 / 2,
+                    rows as i32 / 2,
+                    cols as i32 / 2,
                 ),
             ) {
             Err(e) => panic!("{e}"),
