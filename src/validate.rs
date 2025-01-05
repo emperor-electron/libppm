@@ -1,3 +1,4 @@
+use crate::coordinate::CircleCoordinates;
 use crate::coordinate::Coordinate;
 use crate::coordinate::LineCoordinates;
 use crate::graphics::image::Image;
@@ -5,7 +6,8 @@ use std::fmt::Display;
 
 #[derive(Debug)]
 pub enum ValidationError {
-    OutOfBoundsError(Coordinate, Image),
+    OutOfBoundsInImageError(Coordinate, Image),
+    OutOfBoundsInMemoryError(Coordinate, Image),
     NotEnoughPixelData(Image),
     TooMuchPixelData(Image),
 }
@@ -13,7 +15,7 @@ pub enum ValidationError {
 impl Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValidationError::OutOfBoundsError(coord, image) => {
+            ValidationError::OutOfBoundsInImageError(coord, image) => {
                 write!(
                     f,
                     "{} is out of bounds for image with dimensions {} rows by {} columns.",
@@ -25,7 +27,7 @@ impl Display for ValidationError {
             ValidationError::NotEnoughPixelData(image) => {
                 write!(
                     f,
-                    "Not enough pixel. Expected {}, but found {}.",
+                    "Not enough pixel data. Expected {}, but found {}.",
                     image.get_cols() * image.get_rows(),
                     image.get_data_length()
                 )
@@ -35,6 +37,17 @@ impl Display for ValidationError {
                     f,
                     "Too much pixel data. Expected {}, but found {}.",
                     image.get_cols() * image.get_rows(),
+                    image.get_data_length()
+                )
+            }
+            ValidationError::OutOfBoundsInMemoryError(coord, image) => {
+                write!(
+                    f,
+                    "The index {}, calculated from {:?}, is out of bounds in memory for image with dimensions ({},{}). Image has valid indexes from 0..{}.",
+                    coord.x * *image.get_rows() as i32 + coord.y,
+                    coord,
+                    image.get_rows(),
+                    image.get_cols(),
                     image.get_data_length()
                 )
             }
@@ -61,11 +74,26 @@ pub fn coordinate(image: &Image, coord: &Coordinate) -> Result<(), ValidationErr
         || coord.x < 0
         || coord.y < 0
     {
-        return Err(ValidationError::OutOfBoundsError(
+        return Err(ValidationError::OutOfBoundsInImageError(
             coord.clone(),
             image.clone(),
         ));
     }
+
+    if ((coord.x as usize * image.get_cols()) + coord.y as usize) > image.get_data_length() {
+        return Err(ValidationError::OutOfBoundsInMemoryError(
+            coord.clone(),
+            image.clone(),
+        ));
+    }
+
+    Ok(())
+}
+
+pub fn circle_coordinates(image: &Image, coord: &CircleCoordinates) -> Result<(), ValidationError> {
+    // TODO : figure out validation needed for the radius
+    coordinate(image, &coord.center)?;
+
     Ok(())
 }
 

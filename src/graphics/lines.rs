@@ -55,7 +55,7 @@ impl Image {
         if slope == 1.0 {
             Image::draw_diagonal_line(self, color, coords)
         } else if slope == 0.0 {
-            Image::draw_horizonal_line(self, color, coords)
+            Image::draw_horizontal_line(self, color, coords)
         } else if slope == f32::INFINITY {
             Image::draw_vertical_line(self, color, coords)
         } else if slope > 1.0 {
@@ -67,17 +67,19 @@ impl Image {
         }
     }
 
-    /// Private function to calculate the pixels to be rendered in a cartesian plane where both
+    /// Function to calculate the pixels to be rendered in a cartesian plane where both
     /// coordinates are within the space enclosed by the image (origin is at the top left of the
     /// image) and the slope of the line represented by the LineCoordinates provided is:
     /// slope == 0
-    fn draw_horizonal_line(
+    pub fn draw_horizontal_line(
         &mut self,
         color: u32,
         coords: coordinate::LineCoordinates,
     ) -> Result<&mut Self, validate::ValidationError> {
-        // Assume that this function was called from draw_line_bresenham & coordinates have alredy
-        // been validated.
+        if let Err(e) = validate::line_coordinates(&self, &coords) {
+            return Err(e);
+        }
+
         let coordinate::LineCoordinates {
             first: a,
             second: b,
@@ -95,13 +97,15 @@ impl Image {
     /// coordinates are within the space enclosed by the image (origin is at the top left of the
     /// image) and the slope of the line represented by the LineCoordinates provided is:
     /// slope == INFINITY
-    fn draw_vertical_line(
+    pub fn draw_vertical_line(
         &mut self,
         color: u32,
         coords: coordinate::LineCoordinates,
     ) -> Result<&mut Self, validate::ValidationError> {
-        // Assume that this function was called from draw_line_bresenham & coordinates have alredy
-        // been validated.
+        if let Err(e) = validate::line_coordinates(&self, &coords) {
+            return Err(e);
+        }
+
         let coordinate::LineCoordinates {
             first: a,
             second: b,
@@ -115,7 +119,7 @@ impl Image {
         Ok(self)
     }
 
-    /// Private function to calculate the pixels to be rendered in a cartesian plane where both
+    /// Function to calculate the pixels to be rendered in a cartesian plane where both
     /// coordinates are within the space enclosed by the image (origin is at the top left of the
     /// image) and the slope of the line represented by the LineCoordinates provided is:
     /// slope == 1
@@ -124,8 +128,10 @@ impl Image {
         color: u32,
         coords: coordinate::LineCoordinates,
     ) -> Result<&mut Self, validate::ValidationError> {
-        // Assume that this function was called from draw_line_bresenham & coordinates have alredy
-        // been validated.
+        if let Err(e) = validate::line_coordinates(&self, &coords) {
+            return Err(e);
+        }
+
         let coordinate::LineCoordinates {
             first: a,
             second: b,
@@ -307,7 +313,7 @@ mod tests {
             BLACK,
             coordinate::LineCoordinates::new(0, 0, rows as i32, cols as i32),
         ) {
-            Err(ValidationError::OutOfBoundsError(coord, image)) => {
+            Err(ValidationError::OutOfBoundsInImageError(coord, image)) => {
                 assert_eq!(
                     coord,
                     coordinate::Coordinate {

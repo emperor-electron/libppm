@@ -67,7 +67,7 @@ impl Image {
             return Err(e);
         }
 
-        let pixel_index = (coord.x as usize) * self.rows + (coord.y as usize);
+        let pixel_index = (coord.x as usize) * self.get_cols() + (coord.y as usize);
 
         self.data[pixel_index] = color;
 
@@ -85,7 +85,7 @@ impl Image {
             return Err(e);
         }
 
-        let pixel_index = (coord.x as usize) * self.rows + (coord.y as usize);
+        let pixel_index = (coord.x as usize) * self.get_cols() + (coord.y as usize);
 
         Ok(self.data[pixel_index])
     }
